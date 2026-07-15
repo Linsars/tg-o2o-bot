@@ -364,7 +364,6 @@ async function forwardToTopic(cfg,ctx,userId,from,msg){
   }
   // 如果有话题重建的 fallback，放在这里
 }
-}
 
 async function replyToVisitor(cfg,ctx,targetUserId,msg){
   let extra={};
