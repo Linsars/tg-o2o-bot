@@ -1,96 +1,111 @@
-# tg-o2o-bot
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
 
-动态多 bot Telegram 客服系统，运行在 Cloudflare Workers 上。
+# tg-o2o-bot 🤖
 
-## 功能
+**一个 Telegram Bot，帮你管理访客。** 访客必须先答题验证才能找你聊天，管理群有每个人的资料卡、话题分区，谁断线了、谁改过名字一目了然。
 
-- **多 bot 支持** — 单个 Worker 驱动多个 bot，通过 `BOT_CONFIGS` JSON 配置
-- **访客验证** — 文字题 + 表情题双验证，答错自动编辑为下一题（全程单消息）
-- **资料汇总卡片** — 每个访客一张卡片，显示昵称、状态、曾用名、断线标记
-- **话题隔离** — 每个访客自动创建独立话题，互不干扰
-- **状态流转**
+## 它能做什么
 
-```
-✅ 正常       — 通过验证
-❌ 失信       — 断线后标记，需重新答题
-🌟 信任       — 白名单，免验证
-🚫 封禁       — 含到期时间显示
-📴 失联       — 主人发消息 blocked 自动检测
-```
+- **访客验证** — 访客发 `/start` 后先答题，答对才能聊天。两道题（文字+表情），错了就封禁
+- **资料卡** — 每个访客在管理群有张卡片，状态实时更新：⏳答题中 → ✅正常 / ❌失信 / 🚫封禁 / 🌟信任
+- **断线检测** — 你给访客发消息如果被 TG 退回（对方删了对话/屏蔽了 bot），自动在卡片上标 📴失联，非信任用户还会标记 ❌失信，逼他重新验证
+- **昵称历史** — 点卡片上的 🔥刷新 按钮，bot 拉取最新昵称和用户名，旧昵称自动存到"曾用名"里，话题标题也跟着更新
+- **多 bot 支持** — 一个 Worker 跑多个 bot，互不干扰
+- **私聊转发** — 访客给 bot 发消息 → 自动转到管理群的话题里；你在话题里回复 → 自动转发给访客
+- **话题自动重建** — 删了话题也不怕，访客再发消息会自动重建
 
-- **管理命令** — `/ban` `/unban` `/trust` `/status` `/reply` `/broadcast`
-- **资料卡按钮** — 封禁/信任/刷新资料，直接编辑卡片
-- **昵称历史** — 自动追踪访客曾用名，刷新按钮同步话题标题
-- **断线检测** — 主人回复访客时 blocked → 自动标记失联 + 标记失信
-- **话题重建** — 管理员删话题后访客再发消息自动重建
+## 资料卡状态
+
+| 状态 | 说明 |
+|------|------|
+| ⏳ 答题中 | 正在验证 |
+| ✅ 正常 | 验证通过，可以聊天 |
+| ❌ 失信 | 断线后被标记，需重新答题 |
+| 🌟 信任 | 永久免验证，断线也不影响 |
+| 🚫 封禁（到期时间） | 被封禁了 |
+| 📴失联 | 叠加状态，表示收不到消息 |
 
 ## 部署
 
-### 前置
+### 你需要准备
 
-- Cloudflare 账号
-- 准备好 bot token（从 @BotFather 获取）
-- 创建 KV namespace
+1. **Cloudflare 账号** — free 就行
+2. **一个 Telegram Bot Token** — 找 [@BotFather](https://t.me/BotFather) 要
+3. **Telegram 管理群** — 建个群，把 bot 拉进去，设成管理员
 
-### 步骤
+### 一键部署
 
-1. 在 Cloudflare Dashboard 创建 Worker 服务（ES Module 格式）
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
 
-2. 创建 KV namespace 并绑定到 Worker（绑定名 `KV`）
+点上面的屎黄色按钮，按提示授权 Cloudflare，Worker 就自动部署好了。
 
-3. 设置环境变量 `BOT_CONFIGS`：
+### 配置
+
+部署完后，去 Cloudflare Dashboard 找到你的 Worker，设**环境变量** `BOT_CONFIGS`：
 
 ```json
 [
   {
-    "token": "7953831204:AAE...",
-    "ownerId": "5562061420",
-    "supergroupId": "-1003904689841",
-    "webhookSecret": "your_secret",
-    "healthKey": "health"
+    "token": "你的bot token（找 @BotFather 要）",
+    "ownerId": "你的 Telegram 用户ID（找 @userinfobot 查）",
+    "supergroupId": "管理群ID（带 -100 前缀）",
+    "webhookSecret": "随便写个密码",
+    "healthKey": "health_check_key"
   }
 ]
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `token` | Bot token |
-| `ownerId` | 管理员的 Telegram 用户 ID（数字） |
-| `supergroupId` | 管理群组 ID（含 -100 前缀） |
-| `webhookSecret` | Webhook 密钥（用于 X-Telegram-Bot-Api-Secret-Token） |
-| `healthKey` | 健康检查端点后缀（如 health → /health） |
+- `token` — BotFather 给你的 token
+- `ownerId` — 你的 Telegram User ID（找 [@userinfobot](https://t.me/userinfobot) 查）
+- `supergroupId` — 管理群的 ID（带 `-100` 前缀）
+- `webhookSecret` — 随意，用来保证 webhook 安全
+- `healthKey` — 健康检查用
 
-4. 上传 `worker.js` 到 Worker
+**加第二个 bot** 继续往数组里加就行：
 
-5. 访问 Worker 域名 → 自动激活所有 bot 的 webhook
-
-### 添加新 bot
-
-只需在 `BOT_CONFIGS` 末尾追加一个对象，访问一次 Worker 域名即可自动注册 webhook。
-无需改代码，无需额外部署。
-
-### KV 键名约定
-
-| 前缀 | 用途 |
-|------|------|
-| `b0:` / `b1:` ... | bot 数据隔离，b0 对应 BOT_CONFIGS[0] |
-| `verify:{uid}` | 验证状态 |
-| `user:{uid}` | 用户话题信息和昵称历史 |
-| `profile_card:{uid}` | 资料卡消息位置 |
-| `banned:{uid}` | 封禁状态 |
-| `trusted:{uid}` | 信任状态 |
-| `disconnected:{uid}` | 断线标记 |
-| `distrusted:{uid}` | 失信标记 |
-
-## 架构
-
-```
-访客 → Bot Private Chat → Worker → 管理员群组话题
-        ↑                        ↓
-        验证 ← ← ← ← ← ← ← ← ← ←
+```json
+[
+  { "token": "第一个bot的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." },
+  { "token": "第二个bot的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." }
+]
 ```
 
-- 访客首次 `/start` → 验证答题 → 通过后建话题
-- 访客在话题发消息 → bot 转发到管理员群组的话题
-- 管理员在话题回复 → bot 转发给访客
-- 所有状态通过资料卡在「📋 用户资料汇总」话题统一管理
+还要设一个 KV 绑定（如果一键部署没自动配好的话）：
+- 创建一个 KV namespace（名字随意）
+- 在 Worker 的 KV 绑定里，变量名填 `KV`，选择刚建的 namespace
+
+### 激活
+
+配好后，在浏览器打开你的 Worker 域名（`https://tg-o2o-bot-v1.xxxx.workers.dev/`），它会自动注册所有 bot 的 webhook。看到绿色勾就代表成功了。
+
+去管理群看看——应该出现了一个「📋 用户资料汇总」话题，里面有你的第一个资料卡。
+
+### 管理命令
+
+在管理群的**访客话题**里发：
+
+| 命令 | 作用 |
+|------|------|
+| `/ban 原因` | 封禁该访客 |
+| `/unban` | 解封 |
+| `/trust` | 设为信任（永久免验证） |
+| `/status` | 查看该访客状态 |
+| `/close` | 关闭话题 |
+| `/open` | 重新打开话题 |
+| `/reply 文字` | 回复访客（也可以直接回复消息） |
+| `/broadcast 文字` | 群发给所有已通过验证的访客 |
+
+当然，你也可以直接在资料卡上点按钮：🚫封禁 / 🌟信任 / 🔄刷新资料。
+
+## 技术架构
+
+一个 Cloudflare Worker 同时跑 N 个 bot，所有配置在 `BOT_CONFIGS` 环境变量里。每个 bot 的数据用 `b0:` `b1:` 前缀隔离存在同一个 KV namespace 里。
+
+```
+访客 → Telegram → Cloudflare Worker → 管理群话题
+                ← 转发/回复 ←
+```
+
+## 开源协议
+
+MIT

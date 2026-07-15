@@ -3,7 +3,7 @@ main = "worker.js"
 workers_dev = true
 
 kv_namespaces = [
-  { binding = "KV", id = "ba9623d508704ab8bebcfa93973dba91" }
+  { binding = "KV", id = "" }
 ]
 
 compatibility_flags = [ "nodejs_compat" ]
