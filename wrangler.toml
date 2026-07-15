@@ -1,14 +1,12 @@
-name = "tg-o2o-bot"
+name = "tg-o2o-bot-v1"
 main = "worker.js"
-compatibility_date = "2026-04-30"
 workers_dev = true
 
-[vars]
-ENV_OWNER_ID = "你的Telegram用户ID"
-ENV_SUPERGROUP_ID = "你的群组ID（-100开头）"
-ENV_BOT_TOKEN = "你的Bot Token"
-ENV_WEBHOOK_SECRET = "自定义密钥（用于Webhook验证）"
-ENV_HEALTH_KEY = "自定义密钥（用于health端点鉴权）"
+kv_namespaces = [
+  { binding = "KV", id = "ba9623d508704ab8bebcfa93973dba91" }
+]
 
-[[kv_namespaces]]
-binding = "KV"
+compatibility_flags = [ "nodejs_compat" ]
+
+[env.production]
+vars = { BOT_CONFIGS = "[]" }
