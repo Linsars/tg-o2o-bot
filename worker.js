@@ -239,14 +239,12 @@ async function ensureProfileTopic(cfg) {
 
 function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
-function profileCardText(userId, from, status, disconnected, nameHistory, banExpireStr) {
+function profileCardText(userId, from, status, nameHistory, banExpireStr) {
   const name = escapeHtml([from.first_name||'', from.last_name||''].join(' ').trim()) || '未知';
   const username = from.username ? `@${escapeHtml(from.username)}` : '无';
-  const statusMap = {pending:'⏳ 答题中', verified:'✅ 正常', banned:'🚫 封禁', trusted:'🌟 信任', failed:'❌ 验证失败', distrusted:'❌ 失信', disconnected:'✅ 正常', normal:'✅ 正常'};
+  const statusMap = {pending:'⏳ 答题中', verified:'✅ 正常', banned:'🚫 封禁', trusted:'🌟 信任', failed:'❌ 验证失败', distrusted:'❌ 失信', normal:'✅ 正常'};
   let s = statusMap[status] || '✅ 正常';
   if (status === 'banned' && banExpireStr) s += `（到期 ${banExpireStr}）`;
-  if (status === 'disconnected') s += ' 📴失联';
-  if (disconnected && status !== 'distrusted' && status !== 'disconnected' && status !== 'banned') s += ' 📴失联';
   let text = `<b>👤 用户资料卡</b>\n• 昵称: ${name}\n• 用户名: <code>${username}</code>\n• ID: <code>${escapeHtml(userId)}</code>\n• 状态: ${s}`;
   if (nameHistory && nameHistory.length > 0) {
     const hs = nameHistory.map(h => escapeHtml(h.name)).join(' → ');
@@ -274,7 +272,6 @@ async function syncProfileCard(cfg, userId, from, statusOverride) {
   if (!topicId) return;
   const isBanned = !!await cfg.kv.get(k(cfg, `banned:${userId}`));
   const isTrusted = !!await cfg.kv.get(k(cfg, `trusted:${userId}`));
-  const isDisconnected = !!await cfg.kv.get(k(cfg, `disconnected:${userId}`));
   // 解析封禁到期时间
   let banExpireStr = '';
   if (isBanned) {
@@ -291,7 +288,7 @@ async function syncProfileCard(cfg, userId, from, statusOverride) {
   const status = statusOverride || (isBanned ? 'banned' : isTrusted ? 'trusted' : 'normal');
   // 失信状态覆盖 normal
   const finalStatus = (status === 'normal' && !!await cfg.kv.get(k(cfg, `distrusted:${userId}`))) ? 'distrusted' : status;
-  const text = profileCardText(userId, from, finalStatus, isDisconnected, nameHistory, banExpireStr);
+  const text = profileCardText(userId, from, finalStatus, nameHistory, banExpireStr);
   const buttons = profileCardButtons(userId, isBanned, isTrusted);
   const cardKey = k(cfg, `profile_card:${userId}`);
   const existing = await cfg.kv.get(cardKey, {type:"json"});
@@ -365,16 +362,8 @@ async function forwardToTopic(cfg,ctx,userId,from,msg){
     await cfg.kv.put(k(cfg,`m:${cfg.supergroupId}:${res.result.message_id}`),userId,{expirationTtl:86400});
     await cfg.kv.put(k(cfg,`mv:${userId}:${msg.message_id}`),res.result.message_id,{expirationTtl:86400});
   }
-  // 重新连接检测：如果之前被标记为断线且没有失信，清除标记
-  if(await cfg.kv.get(k(cfg,`disconnected:${userId}`)) && !await cfg.kv.get(k(cfg,`distrusted:${userId}`))){
-    await cfg.kv.delete(k(cfg,`disconnected:${userId}`));
-    await syncProfileCard(cfg,userId,from).catch(e=>console.error("card reconnected:",e.message));
-  }
-  // 如果是信任用户且断线，重新发消息时恢复
-  if(await cfg.kv.get(k(cfg,`disconnected:${userId}`)) && await cfg.kv.get(k(cfg,`trusted:${userId}`))){
-    await cfg.kv.delete(k(cfg,`disconnected:${userId}`));
-    await syncProfileCard(cfg,userId,from,'trusted').catch(e=>console.error("card reconnected:",e.message));
-  }
+  // 如果有话题重建的 fallback，放在这里
+}
 }
 
 async function replyToVisitor(cfg,ctx,targetUserId,msg){
@@ -386,22 +375,20 @@ async function replyToVisitor(cfg,ctx,targetUserId,msg){
   }
   const res=await sendMsg(cfg.token,targetUserId,msg,extra);
   if(!res.ok&&(res.description||"").includes("blocked")){
-    // 标记失联
-    await cfg.kv.put(k(cfg,`disconnected:${targetUserId}`),"1");
-    // 如果不是信任用户，清除 verified + 标记失信
     const isTrusted = !!await cfg.kv.get(k(cfg,`trusted:${targetUserId}`));
+    // 信任用户不受影响，非信任用户标记失信并清除验证
     if (!isTrusted) {
       await cfg.kv.delete(k(cfg,`verified:${targetUserId}`));
       await cfg.kv.put(k(cfg,`distrusted:${targetUserId}`),"1");
     }
     const topic=await cfg.kv.get(k(cfg,`user:${targetUserId}`),{type:"json"});
     if(topic){
-      const statusText = isTrusted ? '⚠️ 该访客已断开连接（信任用户）' : '⚠️ 该访客已断开连接，已标记失信，需重新验证';
+      const statusText = isTrusted ? '⚠️ 该访客已断开连接（信任用户不受影响）' : '⚠️ 该访客已断开连接，需重新发送 /start 验证';
       await tgWithRetry(cfg.token,"sendMessage",{chat_id:cfg.supergroupId,message_thread_id:topic.thread_id,text:statusText});
       const rec = await cfg.kv.get(k(cfg,`user:${targetUserId}`),{type:"json"});
       if(rec){
         const fakeFrom={id:Number(targetUserId),first_name:rec.first_name||rec.title?.split(' [')[0]||'用户',last_name:rec.last_name||'',username:rec.username};
-        await syncProfileCard(cfg,targetUserId,fakeFrom,isTrusted?'disconnected':'distrusted').catch(e=>console.error("card:",e.message));
+        await syncProfileCard(cfg,targetUserId,fakeFrom,isTrusted?null:'distrusted').catch(e=>console.error("card:",e.message));
       }
     }
     return;
@@ -649,7 +636,7 @@ export default{
           // 统一用 callback 的 chat_id + message_id 直接编辑（不依赖 KV 查卡片位置）
           const isBanned = !!await cfg.kv.get(k(cfg,`banned:${tid}`));
           const isTrusted = !!await cfg.kv.get(k(cfg,`trusted:${tid}`));
-          const isDisconnected = !!await cfg.kv.get(k(cfg,`disconnected:${tid}`));
+          // isDisconnected removed — 失信状态由 isDistrusted 替代
           const st = isBanned ? 'banned' : isTrusted ? 'trusted' : 'normal';
           // 失信覆盖
           const isDistrusted = !isBanned && !isTrusted && !!await cfg.kv.get(k(cfg,`distrusted:${tid}`));
@@ -664,7 +651,7 @@ export default{
           const rec = await cfg.kv.get(k(cfg,`user:${tid}`),{type:"json"});
           const fakeFrom = rec ? {id:Number(tid), first_name: rec.first_name || (rec.title||'').split(' [')[0]||'用户', last_name: rec.last_name||'', username:rec.username} : {id:Number(tid), first_name:'用户'};
           const nameHistory = rec?.nameHistory || [];
-          const text = profileCardText(tid, fakeFrom, isDistrusted?'distrusted':st, isDisconnected, nameHistory, banExpireStr);
+          const text = profileCardText(tid, fakeFrom, isDistrusted?'distrusted':st, nameHistory, banExpireStr);
           const btns = profileCardButtons(tid, isBanned, isTrusted);
           await tgWithRetry(cfg.token, 'editMessageText', {
             chat_id: q.message.chat.id,
