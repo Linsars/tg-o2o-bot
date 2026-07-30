@@ -299,6 +299,7 @@ function getCfg(configs, idx, kv, d1Binding) {
 
 function k(cfg, key) { return cfg.kvPrefix + key; }
 function pid(cfg, uid) { return cfg.kvPrefix + uid; }
+function botSuffix(idx) { return idx > 0 ? String(idx + 1) : ''; }
 
 // ============ TG API 工具 ============
 async function tg(token, method, body) {
@@ -822,7 +823,13 @@ export default {
       const url = new URL(request.url);
       const configs = loadConfigs(env);
       const idx = getBotIndex(url);
-      if (configs.length === 0) return new Response(`No bot configured. Set BOT_CONFIGS env var or ENV_BOT_TOKEN. [BOT_CONFIGS=${env.BOT_CONFIGS ? 'set' : 'not set'}]`, {status: 500});
+      if (configs.length === 0) {
+        let parseHint = 'not set';
+        if (env.BOT_CONFIGS) {
+          try { const c = JSON.parse(env.BOT_CONFIGS); parseHint = `parsed: ${Array.isArray(c) ? 'array['+c.length+']' : typeof c}`; } catch(e) { parseHint = 'parse error: ' + e.message; }
+        }
+        return new Response(`No bot configured. BOT_CONFIGS=${parseHint}`, {status: 500});
+      }
       const cfg = getCfg(configs, idx, env.KV, env.TG_O2O_DB);
 
       // D1 初始化（首次调用时建表）
@@ -896,29 +903,32 @@ export default {
             count: results.length, results,
           }), {headers: {"Content-Type":"application/json"}});
         }
+      }
 
-        if (p.startsWith("/activate")) {
-          let token;
+      // /activate — 激活 webhook（GET 和 POST 都支持）
+      if (url.pathname.startsWith("/activate")) {
+        let token;
+        if (request.method === "POST") {
           try { const body = await request.json(); token = body.token; } catch(e) {}
-          if (!token) token = cfg.token;
-          if (!token) return new Response(JSON.stringify({ok:false, description:"No token available"}), {headers:{"Content-Type":"application/json"}});
-          const suffix = botSuffix(idx);
-          let setUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${url.origin}/webhook${suffix}`;
-          if (cfg.webhookSecret) setUrl += `&secret_token=${encodeURIComponent(cfg.webhookSecret)}`;
-          const r = await fetch(setUrl);
-          // 设置命令菜单
-          try {
-            const cmds = [
-              {command:"start",description:"开始验证 / Start verification"},
-              {command:"help",description:"帮助 / Help"},
-              {command:"status",description:"查看状态 / Check status"},
-            ];
-            await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
-              method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({commands:cmds})
-            });
-          } catch(e) { console.error("setMyCommands:", e.message); }
-          return new Response(await r.text(), {headers:{"Content-Type":"application/json"}});
         }
+        if (!token) token = cfg.token;
+        if (!token) return new Response(JSON.stringify({ok:false, description:"No token available"}), {headers:{"Content-Type":"application/json"}});
+        const suffix = botSuffix(idx);
+        let setUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${url.origin}/webhook${suffix}`;
+        if (cfg.webhookSecret) setUrl += `&secret_token=${encodeURIComponent(cfg.webhookSecret)}`;
+        const r = await fetch(setUrl);
+        // 设置命令菜单
+        try {
+          const cmds = [
+            {command:"start",description:"开始验证 / Start verification"},
+            {command:"help",description:"帮助 / Help"},
+            {command:"status",description:"查看状态 / Check status"},
+          ];
+          await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+            method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({commands:cmds})
+          });
+        } catch(e) { console.error("setMyCommands:", e.message); }
+        return new Response(await r.text(), {headers:{"Content-Type":"application/json"}});
       }
 
       // POST → webhook
