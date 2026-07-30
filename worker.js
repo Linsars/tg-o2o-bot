@@ -27,7 +27,7 @@ button:hover{background:#006699}.tip{font-size:12px;color:#999;margin-top:15px}
 <button onclick="activate()">激活机器人</button><div id="result"></div>
 <p class="tip">Token 仅在浏览器本地使用，不会上传到服务器</p></div>
 <script>(async()=>{try{const r=await fetch("/health?key="+new URLSearchParams(location.search).get("key"));const d=await r.json();const h=document.getElementById("health");h.textContent=d.bot+" "+d.count+" bots "+(d.status==="ok"?"运行中":"异常");h.className=d.status==="ok"?"h-ok":"h-err"}catch(e){document.getElementById("health").textContent="离线";document.getElementById("health").className="h-err"}})();
-async function activate(){var t=document.getElementById("token").value.trim(),i=parseInt(document.getElementById("botIdx").value)||1,r=document.getElementById("result");if(!t){r.style.display="block";r.className="err";r.textContent="请输入 Token";return}r.style.display="block";r.className="";r.textContent="正在激活...";try{var resp=await fetch("/activate"+(i>1?i:""),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t})});var d=await resp.json();if(d.ok){r.className="ok";r.textContent="✅ 激活成功！"}else{r.className="err";r.textContent="❌ "+d.description}}catch(e){r.className="err";r.textContent="❌ "+e.message}}</script></body></html>`;
+async function activate(){var t=document.getElementById("token").value.trim(),i=parseInt(document.getElementById("botIdx").value)||1,r=document.getElementById("result");if(!t){r.style.display="block";r.className="err";r.textContent="请输入 Token";return}r.style.display="block";r.className="";r.textContent="正在激活...";try{var resp=await fetch("/activate"+(i>1?i:"")+"?token="+encodeURIComponent(t));var d=await resp.json();if(d.ok){r.className="ok";r.textContent="✅ 激活成功！"}else{r.className="err";r.textContent="❌ "+d.description}}catch(e){r.className="err";r.textContent="❌ "+e.message}}</script></body></html>`;
 
 const TEXT_QUESTIONS = [
   {q:"冰融化后会变成什么？",a:"水",o:["水","石头","木头","火"]},{q:"正常人有几只眼睛？",a:"2",o:["2","1","3","4"]},{q:"以下哪个属于水果？",a:"香蕉",o:["香蕉","白菜","猪肉","大米"]},
@@ -911,7 +911,7 @@ export default {
         if (request.method === "POST") {
           try { const body = await request.json(); token = body.token; } catch(e) {}
         }
-        if (!token) token = cfg.token;
+        if (!token) token = url.searchParams.get('token') || cfg.token;
         if (!token) return new Response(JSON.stringify({ok:false, description:"No token available"}), {headers:{"Content-Type":"application/json"}});
         const suffix = botSuffix(idx);
         let setUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${url.origin}/webhook${suffix}`;
