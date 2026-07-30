@@ -858,6 +858,12 @@ export default {
         }
 
         if (p.startsWith("/health")) {
+          const key = url.searchParams.get('key') || '';
+          // healthKey 校验（如果设了就要匹配）
+          const hk = cfg.healthKey;
+          if (hk && key !== hk) {
+            return new Response(JSON.stringify({status: 'error', bot: `${configs.length} bots`, error: 'invalid key'}), {headers: {"Content-Type":"application/json"}});
+          }
           const results = [];
           for (let i = 0; i < configs.length; i++) {
             const c = getCfg(configs, i, env.KV, env.TG_O2O_DB);
@@ -884,7 +890,6 @@ export default {
               results.push({bot: i + 1, error: e.message});
             }
           }
-          const key = url.searchParams.get('key') || '';
           const allOk = results.every(r => r.tokenOk !== false && r.group === 'ok');
           return new Response(JSON.stringify({
             status: allOk ? 'ok' : 'error', bot: `${results.length} bots`,
