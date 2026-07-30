@@ -59,7 +59,7 @@ const TEXT_QUESTIONS = [
 const EMOJI_POOL = ["🐶","🐱","🐼","🦊","🐸","🦁","🐮","🐷","🐵","🐰","🐻","🐧","🦄","🐙","🦋","🐳","🦜","🐢","🦔","🐲"];
 
 function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b}
-function genTextQ(){const q=TEXT_QUESTIONS[Math.floor(Math.random()*TEXT_QUESTIONS.length)];return{question:q.q,answer:q.a,options:shuffle(q.o),q_en:q.q_en||q.q,o_en:q.o.map(en)}}
+function genTextQ(){const q=TEXT_QUESTIONS[Math.floor(Math.random()*TEXT_QUESTIONS.length)];return{question:q.q,answer:q.a,options:[...q.o]}}
 function genEmojiQ(){const answer=EMOJI_POOL[Math.floor(Math.random()*EMOJI_POOL.length)];const d=shuffle(EMOJI_POOL.filter(e=>e!==answer)).slice(0,7);return{question:`${answer}\n请在下方选项中找到同一个表情\nFind the same emoji below:`,answer,options:shuffle([answer,...d])}}
 function shortId(){return Math.random().toString(36).substring(2,8)}
 function msToTime(ms){const h=Math.floor(ms/3600000);return h<24?`${h}小时`:`${Math.floor(h/24)}天${h%24}小时`}
@@ -184,16 +184,6 @@ async function d1All(d1, sql, args = []) {
   }
 }
 
-async function d1Batch(d1, stmts) {
-  try {
-    if (!d1) return [];
-    const prepared = stmts.map(s => d1.prepare(s.sql).bind(...(s.args || [])));
-    return await d1.batch(prepared);
-  } catch (e) {
-    console.error('D1 batch error:', e.message);
-    return [];
-  }
-}
 async function d1Init(env) {
   if (!env.TG_O2O_DB) return;
   try {
@@ -531,7 +521,7 @@ async function sendTextVerify(cfg, ctx, userId, from) {
   const indices = [...Array(q.options.length).keys()];
   const shuffled = shuffle(indices);
   const opts = shuffled.map(i => q.options[i]);
-  const optsEn = shuffled.map(i => (q.o_en||q.options.map(en))[i]);
+  const optsEn = opts.map(en);
   await cfg.kv.put(k(cfg, `v:${qid}`), JSON.stringify({answer:q.answer,opts,uid:userId}), {expirationTtl:300});
   const buttons = [
     opts.map((o,i) => ({text:o, callback_data:`vt:${qid}:${i}`})),
@@ -691,6 +681,7 @@ async function handleAdmin(cfg, ctx, targetUid, msg, text) {
 `});
     return;
   }
+  if (cmd === '/close') { return; }
 
   if (cmd === '/delall') {
     // 撤回该访客所有消息（双方）
@@ -725,9 +716,7 @@ async function handleAdmin(cfg, ctx, targetUid, msg, text) {
     return;
   }
 
-  if (cmd === '/close' || cmd === '/clone') {
-    return tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "⚠️ /close 已废弃，请使用 /delall"});
-  } else if (cmd === '/reply') {
+  if (cmd === '/reply') {
     const replyTo = msg.reply_to_message;
     if (!replyTo) {
       return tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "请回复一条访客消息使用 /reply <内容>"});
@@ -736,7 +725,7 @@ async function handleAdmin(cfg, ctx, targetUid, msg, text) {
     if (!replyText) {
       return tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "用法：回复访客消息并输入 /reply <回复内容>"});
     }
-    // 查访客原始消息ID + KV兜底
+    // 查访客原始消息ID
     let replyToMsgId;
     const delRow = await d1First(cfg.d1, 'SELECT visitor_msg_id FROM msg_del WHERE group_id = ? AND group_msg_id = ?', [Number(cfg.supergroupId), replyTo.message_id]);
     if (delRow) {
@@ -750,13 +739,15 @@ async function handleAdmin(cfg, ctx, targetUid, msg, text) {
       await d1Run(cfg.d1, 'INSERT OR REPLACE INTO bot_msgs (user_id, msg_id) VALUES (?,?)', [prefixedId, sent.result.message_id]);
       await d1Run(cfg.d1, 'INSERT OR REPLACE INTO msg_del (group_id, group_msg_id, visitor_msg_id) VALUES (?,?,?)', [Number(cfg.supergroupId), msg.message_id, sent.result.message_id]).catch(e=>{});
     }
-  } else if (cmd === '/broadcast') {
+    return;
+  }
+  if (cmd === '/broadcast') {
     const broadcastMsg = parts.slice(1).join(' ');
     if (!broadcastMsg) {
       return tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "用法：/broadcast <消息>\nUsage: /broadcast <message>"});
     }
     await tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "⏳ 正在广播…"});
-    const allUsers = await d1All(cfg.d1, 'SELECT id FROM users');
+    const allUsers = await d1All(cfg.d1, "SELECT id FROM users WHERE state != 'banned'");
     let success = 0, fail = 0;
     for (const u of allUsers.results || []) {
       const uid = u.id.replace(/^b\d+:/, '');
@@ -766,7 +757,9 @@ async function handleAdmin(cfg, ctx, targetUid, msg, text) {
       } catch(e) { fail++; }
     }
     await tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: `📢 广播完成：成功 ${success}，失败 ${fail}`});
-  } else if (cmd === '/recall') {
+    return;
+  }
+  if (cmd === '/recall') {
     const target = parts[1];
     if (!target) return tg(cfg.token, "sendMessage", {chat_id: cfg.supergroupId, message_thread_id: threadId, text: "用法：/recall <user_id>"});
     const targetPrefixed = pid(cfg, target);
