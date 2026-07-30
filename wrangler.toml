@@ -11,6 +11,3 @@ binding = "KV"
 binding = "TG_O2O_DB"
 database_name = "tg-o2o-bot-db"
 database_id = ""
-
-[env.production]
-vars = { BOT_CONFIGS = "[]" }

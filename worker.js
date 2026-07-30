@@ -822,7 +822,7 @@ export default {
       const url = new URL(request.url);
       const configs = loadConfigs(env);
       const idx = getBotIndex(url);
-      if (configs.length === 0) return new Response("No bot configured", {status: 500});
+      if (configs.length === 0) return new Response(`No bot configured. Set BOT_CONFIGS env var or ENV_BOT_TOKEN. [BOT_CONFIGS=${env.BOT_CONFIGS ? 'set' : 'not set'}]`, {status: 500});
       const cfg = getCfg(configs, idx, env.KV, env.TG_O2O_DB);
 
       // D1 初始化（首次调用时建表）
