@@ -38,11 +38,16 @@ Worker → 设置 → 变量，添加一个 **环境变量** ，多个账号、B
   { "token": "bot2的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." }
 ]
 ```
-（注：token后面的bot1的token填bottoken
-     ownerId后面的…填你的TGid
-     supergroupId后面的…填你的和bot的群组-100开头那个
-     webhookSecret后面的…随便设个密码
-     healthKey后面的…随便设个密码
+（注：
+token后面的bot1的token填bottoken
+
+ownerId后面的…填你的TGid
+
+supergroupId后面的…填你的和bot的群组-100开头那个
+
+webhookSecret后面的…随便设个密码
+
+healthKey后面的…随便设个密码
   ）
 
 **3. 激活**
