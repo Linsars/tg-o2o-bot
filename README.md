@@ -49,29 +49,6 @@
 
 资料卡按钮也支持：🚫封禁 / ✅解封 / 🌟信任 / ❌取消信任 / 🔄刷新资料 / 🆕重建话题。
 
-## 技术架构
-
-```
-访客 → Telegram → Cloudflare Worker (D1 + KV) → 管理群话题
-                ← 转发/回复 ←
-```
-
-### 持久化（D1）
-
-| 表 | 用途 |
-|----|------|
-| `users` | 用户数据（状态、昵称、话题ID、曾用名、资料卡等） |
-| `thread_map` | 话题ID ↔ 用户ID |
-| `bot_msgs` | bot 发给访客的消息ID（用于撤回） |
-| `msg_map` | 群消息ID ↔ 用户ID |
-| `msg_del` | 群消息ID ↔ 访客消息ID（用于 `/del` 和 `/reply` 引用） |
-
-Worker 首次收到请求时会自动创建这些表，无需手动建表。
-
-### 临时态（KV）
-
-验证码、限流、消息编辑映射等短期数据存在 KV，自动过期。
-
 ## 部署
 
 ### 你需要准备
@@ -113,11 +90,9 @@ Worker → 设置 → 变量，添加一个 **环境变量** `BOT_CONFIGS`：
 ]
 ```
 
-**3. 部署 Worker**
+D1 的表由 Worker 首次运行时自动创建，无需手动建表。
 
-如果一键部署已经帮你部署了，可以直接保存编辑器的代码。否则把 `worker.js` 的内容粘贴到 Worker 编辑器 → 保存并部署。
-
-**4. 激活**
+**3. 激活**
 
 浏览器打开你的 Worker 域名（`https://tg-o2o-bot.xxxx.workers.dev/`），看到绿色勾代表成功。
 
@@ -134,40 +109,6 @@ Worker → 设置 → 变量，添加一个 **环境变量** `BOT_CONFIGS`：
 ]
 ```
 
-### wrangler CLI 部署
 
-如果你用 wrangler，`wrangler.toml` 已预配好 KV 和 D1 绑定，只需要在部署前补上 D1 数据库 ID：
-
-```toml
-[[d1_databases]]
-binding = "TG_O2O_DB"
-database_name = "tg-o2o-bot-db"
-database_id = "你的D1数据库UUID"
-```
-
-然后运行：
-
-```bash
-wrangler deploy
-```
-
-### API 部署（CI/CD 用）
-
-用 Cloudflare API 部署时需要显式在 metadata 里声明绑定的 D1 和 KV：
-
-```json
-{
-  "main_module": "worker.js",
-  "bindings": [
-    {"name": "KV", "type": "kv_namespace", "namespace_id": "你的KV namespace ID"},
-    {"name": "TG_O2O_DB", "type": "d1", "id": "你的D1数据库ID"}
-  ],
-  "keep_bindings": ["plain_text", "secret_text", "service"]
-}
-```
-
-D1 的表由 Worker 首次运行时自动创建，无需手动建表。
-
-## 开源协议
 
 MIT
