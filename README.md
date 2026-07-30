@@ -1,3 +1,5 @@
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
+
 # tg-o2o-bot 🤖
 
 **一个 Telegram Bot，帮你管理访客。** 访客必须先答题验证才能找你聊天，管理群有每个人的资料卡、话题分区，谁断线了、谁改过名字一目了然。
@@ -64,6 +66,8 @@
 | `msg_map` | 群消息ID ↔ 用户ID |
 | `msg_del` | 群消息ID ↔ 访客消息ID（用于 `/del` 和 `/reply` 引用） |
 
+Worker 首次收到请求时会自动创建这些表，无需手动建表。
+
 ### 临时态（KV）
 
 验证码、限流、消息编辑映射等短期数据存在 KV，自动过期。
@@ -74,15 +78,28 @@
 
 1. **Cloudflare 账号** — free 就行
 2. **一个 Telegram Bot Token** — 找 [@BotFather](https://t.me/BotFather) 要
-3. **Telegram 管理群** — 建个群，把 bot 拉进去设成管理员
+3. **Telegram 管理群** — 建个群，把 bot 拉进去设成管理员，获取群 ID（带 `-100` 前缀）
+4. **你的 Telegram 用户 ID** — 找 [@userinfobot](https://t.me/userinfobot) 查
 
-### 步骤
+### 一键部署
 
-1. **Fork 仓库** 到你自己的 GitHub
-2. **Cloudflare Dashboard** → Workers & Pages → 创建 Worker
-3. **创建 D1 数据库**（名如 `tg-o2o-bot-db`），Worker 绑定变量名填 `TG_O2O_DB`
-4. **创建 KV namespace**（名如 `tg-o2o-bot-kv`），Worker 绑定变量名填 `KV`
-5. **设环境变量 `BOT_CONFIGS`**：
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
+
+点上面的按钮，按提示授权 Cloudflare。它会自动创建 Worker + KV namespace，**但不支持 D1 数据库**。需要用以下额外步骤完成：
+
+### 需要手动创建的
+
+一键部署后，去 [Cloudflare Dashboard → Workers → tg-o2o-bot](https://dash.cloudflare.com/)：
+
+**1. 创建 D1 数据库**
+
+Workers & Pages → D1 → 创建数据库（名字随意，如 `tg-o2o-bot-db`）。创建好后进 Worker 的 **设置 → 绑定**，添加 **D1 数据库** 绑定：
+- 变量名称: `TG_O2O_DB`
+- 选择刚创建的 D1 数据库
+
+**2. 设环境变量**
+
+Worker → 设置 → 变量，添加一个 **环境变量** `BOT_CONFIGS`：
 
 ```json
 [
@@ -96,8 +113,15 @@
 ]
 ```
 
-6. **部署 Worker** — 把 `worker.js` 的内容粘贴到 Cloudflare Dashboard 编辑器，保存并部署。或者用 wrangler CLI / API 部署（记得在 metadata 里带上 D1 和 KV 绑定）
-7. **激活 webhook** — 浏览器打开 Worker 域名，页面会自动注册 webhook
+**3. 部署 Worker**
+
+如果一键部署已经帮你部署了，可以直接保存编辑器的代码。否则把 `worker.js` 的内容粘贴到 Worker 编辑器 → 保存并部署。
+
+**4. 激活**
+
+浏览器打开你的 Worker 域名（`https://tg-o2o-bot.xxxx.workers.dev/`），看到绿色勾代表成功。
+
+去管理群看看——应该出现了一个 **📋 用户资料汇总** 话题，里面有你的第一个资料卡。
 
 ### 加第二个 bot
 
@@ -110,7 +134,26 @@
 ]
 ```
 
-### API 部署（带绑定的 metadata 示例）
+### wrangler CLI 部署
+
+如果你用 wrangler，`wrangler.toml` 已预配好 KV 和 D1 绑定，只需要在部署前补上 D1 数据库 ID：
+
+```toml
+[[d1_databases]]
+binding = "TG_O2O_DB"
+database_name = "tg-o2o-bot-db"
+database_id = "你的D1数据库UUID"
+```
+
+然后运行：
+
+```bash
+wrangler deploy
+```
+
+### API 部署（CI/CD 用）
+
+用 Cloudflare API 部署时需要显式在 metadata 里声明绑定的 D1 和 KV：
 
 ```json
 {
@@ -123,17 +166,7 @@
 }
 ```
 
-## D1 初始化
-
-首次部署后 Worker 会自动建表，无需手动操作。建的表包括：
-
-```sql
-CREATE TABLE IF NOT EXISTS users (...)
-CREATE TABLE IF NOT EXISTS thread_map (...)
-CREATE TABLE IF NOT EXISTS bot_msgs (...)
-CREATE TABLE IF NOT EXISTS msg_map (...)
-CREATE TABLE IF NOT EXISTS msg_del (...)
-```
+D1 的表由 Worker 首次运行时自动创建，无需手动建表。
 
 ## 开源协议
 
