@@ -438,7 +438,7 @@ async function checkRateLimit(kv, key) {
 
 // ============ 资料卡 ============
 async function ensureProfileTopic(cfg) {
-  const key = k(cfg, 'profile_log_topic');
+  const key = k(cfg, 'profile_log_topic:' + cfg.supergroupId);
   let tid = await cfg.kv.get(key);
   if (tid) {
     // 验证话题是否还存在
