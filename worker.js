@@ -441,21 +441,13 @@ async function ensureProfileTopic(cfg) {
   const key = k(cfg, 'profile_log_topic:' + cfg.supergroupId);
   let tid = await cfg.kv.get(key);
   if (tid) {
-    // 验证话题是否还存在
-    const r = await tg(cfg.token, "editForumTopic", {
-      chat_id: cfg.supergroupId, message_thread_id: Number(tid), name: '📋 用户资料汇总'
-    });
-    if (r.ok) return tid;
-    // 已删除 → 清空 KV，重建
-    await cfg.kv.delete(key);
+    // "general" = 使用 General 话题（不带 message_thread_id）
+    if (tid === 'general') return 'general';
+    return tid;
   }
-  const res = await tg(cfg.token, "createForumTopic", {
-    chat_id: cfg.supergroupId, name: '📋 用户资料汇总',
-  });
-  if (!res.ok) return null;
-  tid = String(res.result.message_thread_id);
-  await cfg.kv.put(key, tid);
-  return tid;
+  // 默认直接用 General 话题，不建新话题
+  await cfg.kv.put(key, 'general');
+  return 'general';
 }
 
 function profileCardText(userId, from, status, nameHistory, banExpireStr) {
@@ -493,41 +485,39 @@ async function syncProfileCard(cfg, userId, from, statusOverride) {
   if (!topicId) return;
   await saveNameChange(cfg, userId, from);
   const user = await d1GetUser(cfg.d1, prefixedId);
-  if (!user) return;
-  const isBanned = user.state === 'banned' || (user.ban_until && user.ban_until > Math.floor(Date.now()/1000));
-  const isTrusted = !!user.trusted;
-  const isDistrusted = !!user.distrusted;
+  // 新用户未在 D1 创建时仍然要发资料卡
+  const u = user || { state: 'new', trusted: 0, distrusted: 0, ban_until: 0, nameHistory: [], card_cid: 0, card_mid: 0 };
+  const isBanned = u.state === 'banned' || (u.ban_until && u.ban_until > Math.floor(Date.now()/1000));
+  const isTrusted = !!u.trusted;
+  const isDistrusted = !!u.distrusted;
   let banExpireStr = '';
-  if (isBanned && user.ban_until) {
-    const d = new Date(user.ban_until * 1000);
+  if (isBanned && u.ban_until) {
+    const d = new Date(u.ban_until * 1000);
     banExpireStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
-  const nameHistory = user.nameHistory || [];
+  const nameHistory = u.nameHistory || [];
   let status = statusOverride || (isBanned ? 'banned' : isTrusted ? 'trusted' : 'normal');
   const finalStatus = (status === 'normal' && isDistrusted) ? 'distrusted' : status;
   const text = profileCardText(userId, from, finalStatus, nameHistory, banExpireStr);
   const buttons = profileCardButtons(userId, isBanned, isTrusted);
-  const cardCid = user?.card_cid;
-  const cardMid = user?.card_mid;
+  const cardCid = u?.card_cid;
+  const cardMid = u?.card_mid;
+  const msgPayload = topicId === 'general'
+    ? {chat_id: cfg.supergroupId, text, reply_markup: buttons, parse_mode: 'HTML'}
+    : {chat_id: cfg.supergroupId, message_thread_id: Number(topicId), text, reply_markup: buttons, parse_mode: 'HTML'};
   if (cardCid && cardMid) {
     const editRes = await tg(cfg.token, 'editMessageText', {
       chat_id: cardCid, message_id: cardMid, text,
       reply_markup: buttons, parse_mode: 'HTML',
     });
     if (!editRes.ok) {
-      const res = await tg(cfg.token, 'sendMessage', {
-        chat_id: cfg.supergroupId, message_thread_id: Number(topicId), text,
-        reply_markup: buttons, parse_mode: 'HTML',
-      });
+      const res = await tg(cfg.token, 'sendMessage', msgPayload);
       if (res?.ok && res?.result?.message_id) {
         await d1UpsertUser(cfg.d1, prefixedId, { card_cid: Number(cfg.supergroupId), card_mid: res.result.message_id });
       }
     }
   } else {
-    const res = await tg(cfg.token, 'sendMessage', {
-      chat_id: cfg.supergroupId, message_thread_id: Number(topicId), text,
-      reply_markup: buttons, parse_mode: 'HTML',
-    });
+    const res = await tg(cfg.token, 'sendMessage', msgPayload);
     if (res?.ok && res?.result?.message_id) {
       await d1UpsertUser(cfg.d1, prefixedId, { card_cid: Number(cfg.supergroupId), card_mid: res.result.message_id });
     }
