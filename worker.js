@@ -6,28 +6,26 @@
  */
 
 // ============ 页面 & 题库 & 常量 ============
-const HTML_PAGE = `<!DOCTYPE html><html><head>
+const STATUS_PAGE_HEAD = `<!DOCTYPE html><html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>tg-o2o-bot</title>
-<style>body{font-family:Arial,sans-serif;text-align:center;padding:50px;background:#f5f5f5}
-.box{background:#fff;padding:30px;border-radius:10px;max-width:420px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-input{width:90%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:5px;font-size:14px}
-input[type=number]{width:60px;padding:10px;margin:10px 5px;border:1px solid #ddd;border-radius:5px;font-size:14px;text-align:center}
-button{background:#0088cc;color:#fff;border:none;padding:12px 28px;border-radius:5px;font-size:15px;cursor:pointer;margin-top:10px}
-button:hover{background:#006699}.tip{font-size:12px;color:#999;margin-top:15px}
-#result{margin-top:15px;padding:10px;border-radius:5px;display:none}
-.ok{background:#d4edda;color:#155724}.err{background:#f8d7da;color:#721c24}
-#health{position:fixed;top:10px;right:10px;padding:4px 10px;border-radius:12px;font-size:11px;color:#fff;cursor:pointer}
-.h-ok{background:#28a745}.h-err{background:#dc3545}.h-ing{background:#6c757d}
-</style></head><body>
-<span id="health" class="h-ing">检查中...</span>
-<div class="box"><h1>🤖 Telegram Bot</h1><p>输入 Bot Token 和 Bot 编号激活 Webhook：</p>
-<input type="text" id="token" placeholder="123456:ABC-DEF...">
-<label>#</label><input type="number" id="botIdx" value="1" min="1"><br>
-<button onclick="activate()">激活机器人</button><div id="result"></div>
-<p class="tip">Token 仅在浏览器本地使用，不会上传到服务器</p></div>
-<script>(async()=>{try{const r=await fetch("/health?key="+new URLSearchParams(location.search).get("key"));const d=await r.json();const h=document.getElementById("health");h.textContent=d.bot+" "+d.count+" bots "+(d.status==="ok"?"运行中":"异常");h.className=d.status==="ok"?"h-ok":"h-err"}catch(e){document.getElementById("health").textContent="离线";document.getElementById("health").className="h-err"}})();
-async function activate(){var t=document.getElementById("token").value.trim(),i=parseInt(document.getElementById("botIdx").value)||1,r=document.getElementById("result");if(!t){r.style.display="block";r.className="err";r.textContent="请输入 Token";return}r.style.display="block";r.className="";r.textContent="正在激活...";try{var resp=await fetch("/activate"+(i>1?i:"")+"?token="+encodeURIComponent(t));var d=await resp.json();if(d.ok){r.className="ok";r.textContent="✅ 激活成功！"}else{r.className="err";r.textContent="❌ "+d.description}}catch(e){r.className="err";r.textContent="❌ "+e.message}}</script></body></html>`;
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;padding:20px;color:#333}
+h1{font-size:22px;margin-bottom:18px}
+.card{background:#fff;border-radius:12px;padding:20px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.status-bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.dot-ok{background:#22c55e}.dot-err{background:#ef4444}
+.bot-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.bot-row:last-child{border-bottom:none}
+.bot-name{font-weight:600;font-size:15px}.bot-detail{font-size:13px;color:#666;margin-top:2px}
+.tag{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.tag-ok{background:#dcfce7;color:#166534}.tag-err{background:#fef2f2;color:#991b1b}
+.tag-warn{background:#fef9c3;color:#854d0e}
+.footer{text-align:center;font-size:12px;color:#999;margin-top:20px}
+.refresh{color:#0088cc;text-decoration:none;font-size:13px}
+</style></head><body>`;
 
 const TEXT_QUESTIONS = [
   {q:"冰融化后会变成什么？",a:"水",o:["水","石头","木头","火"]},{q:"正常人有几只眼睛？",a:"2",o:["2","1","3","4"]},{q:"以下哪个属于水果？",a:"香蕉",o:["香蕉","白菜","猪肉","大米"]},
@@ -64,6 +62,29 @@ function genEmojiQ(){const answer=EMOJI_POOL[Math.floor(Math.random()*EMOJI_POOL
 function shortId(){return Math.random().toString(36).substring(2,8)}
 function msToTime(ms){const h=Math.floor(ms/3600000);return h<24?`${h}小时`:`${Math.floor(h/24)}天${h%24}小时`}
 function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function renderStatusPage(results, allOk) {
+  const rows = results.map((r, i) => {
+    const whTag = r.webhook ? '<span class="tag tag-ok">✅ 已激活</span>' : '<span class="tag tag-err">❌ 未激活</span>';
+    const cmdTag = r.commandsOk ? '<span class="tag tag-ok">✅ 已注册</span>' : '<span class="tag tag-warn">⚠️ 未注册</span>';
+    const errHtml = r.error ? `<div class="bot-detail">${escapeHtml(r.error)}</div>` : '';
+    return `<div class="bot-row">
+      <div><div class="bot-name">🤖 Bot #${i+1} ${escapeHtml(r.name||'')}</div>${errHtml}
+      <div class="bot-detail">${r.webhook ? 'Webhook: ' + escapeHtml(r.whUrl||'') : ''}</div></div>
+      <div style="text-align:right;line-height:1.8">${whTag}<br>${cmdTag}</div>
+    </div>`;
+  }).join('');
+  const dot = allOk ? 'dot-ok' : 'dot-err';
+  const statusText = allOk ? '✅ 所有 Bot 运行正常' : '⚠️ 部分 Bot 异常';
+  return `${STATUS_PAGE_HEAD}
+<div class="card">
+  <div class="status-bar"><span class="dot ${dot}"></span><span>${statusText}</span></div>
+  ${rows}
+</div>
+<div class="footer">
+  <a class="refresh" href="/">🔄 刷新状态</a>
+</div></body></html>`;
+}
 
 // 中译英对照
 const ZH_EN = {
@@ -823,7 +844,56 @@ export default {
         const p = url.pathname;
 
         if (p === "/" || p === "/index.html") {
-          return new Response(HTML_PAGE, {
+          // 自动激活所有 bot 的 webhook
+          const setupResults = [];
+          let allOk = true;
+          for (let i = 0; i < configs.length; i++) {
+            const c = getCfg(configs, i, env.KV, env.TG_O2O_DB);
+            const suffix = botSuffix(i);
+            const whUrl = `${url.origin}/webhook${suffix}`;
+            const sr = { bot: i + 1, name: '', whUrl, webhook: false, commandsOk: false, error: null };
+            try {
+              const params = { url: whUrl, max_connections: 50, allowed_updates: ["message","edited_message","callback_query","message_reaction"] };
+              if (c.webhookSecret) params.secret_token = c.webhookSecret;
+              const r1 = await fetch(`https://api.telegram.org/bot${c.token}/setWebhook`, {
+                method:'POST', headers:{"Content-Type":"application/json"}, body:JSON.stringify(params)
+              });
+              const d1 = await r1.json();
+              sr.webhook = d1.ok === true;
+              if (!sr.webhook) allOk = false;
+              // 获取 bot 名字
+              const me = await fetch(`https://api.telegram.org/bot${c.token}/getMe`).then(r=>r.json());
+              if (me.ok) sr.name = me.result.username || me.result.first_name || '';
+              // 设置私聊命令
+              const cmds1 = [
+                {command:"start",description:"开始验证 / Start"},
+                {command:"help",description:"帮助 / Help"},
+                {command:"reply",description:"引用回复对方消息 / Quote reply"},
+                {command:"status",description:"状态 / Status"},
+              ];
+              await fetch(`https://api.telegram.org/bot${c.token}/setMyCommands`, {
+                method:"POST", headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({commands:cmds1, scope:{type:"all_private_chats"}})
+              });
+              // 设置群组命令
+              const cmds2 = [
+                {command:"delall",description:"撤回该访客全部消息"},
+                {command:"del",description:"撤回单条消息（回复使用）"},
+                {command:"recall",description:"按用户ID撤回"},
+                {command:"reply",description:"引用回复对方消息"},
+                {command:"broadcast",description:"广播消息给所有访客"},
+                {command:"help",description:"管理员帮助"},
+              ];
+              const r2 = await fetch(`https://api.telegram.org/bot${c.token}/setMyCommands`, {
+                method:"POST", headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({commands:cmds2, scope:{type:"all_group_chats"}})
+              });
+              const d2 = await r2.json();
+              sr.commandsOk = d2.ok === true;
+            } catch(e) { sr.error = e.message; allOk = false; }
+            setupResults.push(sr);
+          }
+          return new Response(renderStatusPage(setupResults, allOk), {
             headers: {"Content-Type":"text/html;charset=utf-8"},
           });
         }
