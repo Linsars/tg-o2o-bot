@@ -1,5 +1,3 @@
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
-
 # tg-o2o-bot 🤖
 
 **一个 Telegram Bot，帮你管理访客。** 访客必须先答题验证才能找你聊天，管理群有每个人的资料卡、话题分区，谁断线了、谁改过名字一目了然。
@@ -12,6 +10,41 @@
 - **断线检测** — 发消息被 TG 退回自动标记失信，需重新验证
 - **话题自动重建** — 删了话题也不怕，下条消息自动建新的
 - **多 bot 支持** — 一个 Worker 跑多个 bot，互不干扰
+
+
+## 部署
+
+### 你需要准备
+
+1. **Cloudflare 账号** — free 就行
+2. **一个 Telegram Bot Token** — 找 [@BotFather](https://t.me/BotFather) 要。BOT创建好之后，复制bottoken注意末尾别带空格，然后在botfather里面设置 **Bot Setting** 再点 **Group Privacy** 点 **Turn Off** 切换成 **Privacy mode is disabled for**
+3. **Telegram 管理群** — 建个群，把 bot 拉进去设成管理员，获取群 ID（带 `-100` 前缀）。然后点群组头像， **群组设置** 里面 **话题** 打开并选 **列表** 保存
+4. **你的 Telegram 用户 ID** — 找 [@userinfobot](https://t.me/userinfobot) 查
+
+### 一键部署
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
+
+点上面这个屎黄色按钮，按提示授权 Cloudflare。它会自动创建 Worker + KV namespace
+
+**2. 设环境变量**
+
+Worker → 设置 → 变量，添加一个 **环境变量** ，多个账号、BOT、群组就用英文逗号隔开如下
+`BOT_CONFIGS`
+
+```json
+[
+  { "token": "bot1的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." },
+  { "token": "bot2的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." }
+]
+```
+
+
+**3. 激活**
+
+浏览器打开你的 Worker 域名（`https://tg-o2o-bot.xxxx.workers.dev/`），看到绿色勾代表成功。
+
+去管理群看看——应该出现了一个 **📋 用户资料汇总** 话题，里面有你的第一个资料卡。
 
 ## 资料卡状态
 
@@ -48,67 +81,6 @@
 | `/help` | 管理员帮助 |
 
 资料卡按钮也支持：🚫封禁 / ✅解封 / 🌟信任 / ❌取消信任 / 🔄刷新资料 / 🆕重建话题。
-
-## 部署
-
-### 你需要准备
-
-1. **Cloudflare 账号** — free 就行
-2. **一个 Telegram Bot Token** — 找 [@BotFather](https://t.me/BotFather) 要
-3. **Telegram 管理群** — 建个群，把 bot 拉进去设成管理员，获取群 ID（带 `-100` 前缀）
-4. **你的 Telegram 用户 ID** — 找 [@userinfobot](https://t.me/userinfobot) 查
-
-### 一键部署
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Linsars/tg-o2o-bot)
-
-点上面的按钮，按提示授权 Cloudflare。它会自动创建 Worker + KV namespace，**但不支持 D1 数据库**。需要用以下额外步骤完成：
-
-### 需要手动创建的
-
-一键部署后，去 [Cloudflare Dashboard → Workers → tg-o2o-bot](https://dash.cloudflare.com/)：
-
-**1. 创建 D1 数据库**
-
-Workers & Pages → D1 → 创建数据库（名字随意，如 `tg-o2o-bot-db`）。创建好后进 Worker 的 **设置 → 绑定**，添加 **D1 数据库** 绑定：
-- 变量名称: `TG_O2O_DB`
-- 选择刚创建的 D1 数据库
-
-**2. 设环境变量**
-
-Worker → 设置 → 变量，添加一个 **环境变量** `BOT_CONFIGS`：
-
-```json
-[
-  {
-    "token": "你的bot token",
-    "ownerId": "你的 Telegram 用户ID",
-    "supergroupId": "管理群ID（带 -100 前缀）",
-    "webhookSecret": "随便写个密码",
-    "healthKey": "health_check_key"
-  }
-]
-```
-
-D1 的表由 Worker 首次运行时自动创建，无需手动建表。
-
-**3. 激活**
-
-浏览器打开你的 Worker 域名（`https://tg-o2o-bot.xxxx.workers.dev/`），看到绿色勾代表成功。
-
-去管理群看看——应该出现了一个 **📋 用户资料汇总** 话题，里面有你的第一个资料卡。
-
-### 加第二个 bot
-
-继续往 `BOT_CONFIGS` 数组里加就行：
-
-```json
-[
-  { "token": "bot1的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." },
-  { "token": "bot2的token", "ownerId": "...", "supergroupId": "...", "webhookSecret": "...", "healthKey": "..." }
-]
-```
-
 
 
 MIT
