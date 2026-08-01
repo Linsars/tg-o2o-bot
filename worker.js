@@ -845,12 +845,25 @@ export default {
 
         if (p === "/" || p === "/index.html") {
           // 自动激活所有 bot 的 webhook
+          const host = url.hostname;
+          const isDevDomain = host.endsWith('.workers.dev');
+          const base = env.WEBHOOK_BASE_URL ? env.WEBHOOK_BASE_URL.replace(/\/+$/, '') : `${url.protocol}//${url.hostname}`;
+          if (isDevDomain && !env.WEBHOOK_BASE_URL) {
+            // workers.dev 域名 TG 无法访问，不激活 webhook，提示用自定义域名
+            return new Response(`${STATUS_PAGE_HEAD}
+<div class="card"><h1>⚠️ 无法在此域名激活</h1>
+<p style="font-size:14px;color:#666;line-height:1.8">当前访问的是 <code>${escapeHtml(host)}</code>（workers.dev），
+Telegram 服务器无法访问该域名，webhook 会失效。<br><br>
+请使用自定义域名访问：<code>linsarbb.linsar.de5.net</code><br><br>
+或设置环境变量 <code>WEBHOOK_BASE_URL</code>（如 https://你的域名）后刷新本页。</p>
+</div></body></html>`, {headers: {"Content-Type":"text/html;charset=utf-8"}});
+          }
           const setupResults = [];
           let allOk = true;
           for (let i = 0; i < configs.length; i++) {
             const c = getCfg(configs, i, env.KV, env.TG_O2O_DB);
             const suffix = botSuffix(i);
-            const whUrl = `${url.origin}/webhook${suffix}`;
+            const whUrl = `${base}/webhook${suffix}`;
             const sr = { bot: i + 1, name: '', whUrl, webhook: false, commandsOk: false, error: null };
             try {
               const params = { url: whUrl, max_connections: 50, allowed_updates: ["message","edited_message","callback_query","message_reaction"] };
@@ -904,6 +917,30 @@ export default {
             const r = await env.KV.get("b0:fm:test_debug");
             return new Response(JSON.stringify({ok:true, wrote:"fm:test_debug", read:r}), {headers:{"Content-Type":"application/json"}});
           } catch(e) { return new Response(JSON.stringify({ok:false, error:e.message}), {headers:{"Content-Type":"application/json"}}); }
+        }
+
+        if (p === "/whinfo") {
+          const out = [];
+          for (let i = 0; i < configs.length; i++) {
+            const c = getCfg(configs, i, env.KV, env.TG_O2O_DB);
+            try {
+              const r = await fetch(`https://api.telegram.org/bot${c.token}/getWebhookInfo`);
+              const d = await r.json();
+              if (d.ok) {
+                out.push({
+                  bot: i + 1,
+                  url: d.result.url,
+                  pending: d.result.pending_update_count,
+                  last_error: d.result.last_error_message || null,
+                  last_error_date: d.result.last_error_date ? new Date(d.result.last_error_date*1000).toISOString() : null,
+                  allowed_updates: d.result.allowed_updates || null,
+                });
+              } else {
+                out.push({ bot: i + 1, error: d.description });
+              }
+            } catch(e) { out.push({ bot: i + 1, error: e.message }); }
+          }
+          return new Response(JSON.stringify(out, null, 2), {headers: {"Content-Type":"application/json"}});
         }
 
         if (p === "/debug") {
@@ -967,7 +1004,13 @@ export default {
         if (!token) token = url.searchParams.get('token') || cfg.token;
         if (!token) return new Response(JSON.stringify({ok:false, description:"No token available"}), {headers:{"Content-Type":"application/json"}});
         const suffix = botSuffix(idx);
-        let setUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${url.origin}/webhook${suffix}`;
+        // workers.dev 域名 TG 无法访问，必须用自定义域名或 WEBHOOK_BASE_URL
+        const host = url.hostname;
+        const base = env.WEBHOOK_BASE_URL ? env.WEBHOOK_BASE_URL.replace(/\/+$/, '') : `${url.protocol}//${url.hostname}`;
+        if (host.endsWith('.workers.dev') && !env.WEBHOOK_BASE_URL) {
+          return new Response(JSON.stringify({ok:false, description:"workers.dev 域名无法用于 webhook，请用自定义域名或设置 WEBHOOK_BASE_URL"}), {headers:{"Content-Type":"application/json"}});
+        }
+        let setUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${base}/webhook${suffix}`;
         if (cfg.webhookSecret) setUrl += `&secret_token=${encodeURIComponent(cfg.webhookSecret)}`;
         const r = await fetch(setUrl);
         // 设置命令菜单
